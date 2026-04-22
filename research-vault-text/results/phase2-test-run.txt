@@ -1,0 +1,60 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.12.12, pytest-9.0.1, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.12/bin/python3.12
+cachedir: .pytest_cache
+rootdir: /Users/sonia/TEXT-JEPA
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 35 items
+
+tests/test_builders.py::test_build_encoder_returns_textencoder PASSED    [  2%]
+tests/test_builders.py::test_build_target_encoder_returns_targetencoder PASSED [  5%]
+tests/test_builders.py::test_build_predictor_returns_predictor PASSED    [  8%]
+tests/test_builders.py::test_build_loss_returns_loss PASSED              [ 11%]
+tests/test_builders.py::test_builders_wire_temporal_stride_from_config PASSED [ 14%]
+tests/test_data.py::test_rocstories_segment_count PASSED                 [ 17%]
+tests/test_data.py::test_rocstories_temporal_split PASSED                [ 20%]
+tests/test_data.py::test_rocstories_no_future_leakage PASSED             [ 22%]
+tests/test_data.py::test_pg19_paragraph_segmentation PASSED              [ 25%]
+tests/test_data.py::test_pg19_temporal_split_no_shuffle PASSED           [ 28%]
+tests/test_data.py::test_collator_context_window PASSED                  [ 31%]
+tests/test_data.py::test_collator_no_future_in_context PASSED            [ 34%]
+tests/test_encoder.py::test_encoder_output_shape PASSED                  [ 37%]
+tests/test_encoder.py::test_encoder_all_params_trainable PASSED          [ 40%]
+tests/test_encoder.py::test_encoder_no_token_reconstruction_loss PASSED  [ 42%]
+tests/test_encoder.py::test_encoder_output_dtype PASSED                  [ 45%]
+tests/test_encoder.py::test_encoder_has_temporal_stride_param PASSED     [ 48%]
+tests/test_loss.py::test_smooth_l1_decreases_toward_target PASSED        [ 51%]
+tests/test_loss.py::test_sigreg_detects_collapsed_representations PASSED [ 54%]
+tests/test_loss.py::test_no_cross_entropy_in_training_path PASSED        [ 57%]
+tests/test_loss.py::test_loss_uses_bcs_class_from_anticollapse PASSED    [ 60%]
+tests/test_loss.py::test_loss_stop_grad_on_target PASSED                 [ 62%]
+tests/test_loss.py::test_bcs_defaults_match_hier_cost_exp PASSED         [ 65%]
+tests/test_predictor.py::test_predictor_output_shape PASSED              [ 68%]
+tests/test_predictor.py::test_predictor_mask_token_is_learnable PASSED   [ 71%]
+tests/test_predictor.py::test_predictor_bidirectional_attention PASSED   [ 74%]
+tests/test_predictor.py::test_predictor_mask_token_in_input PASSED       [ 77%]
+tests/test_predictor.py::test_predictor_has_temporal_stride_param PASSED [ 80%]
+tests/test_target_encoder.py::test_target_encoder_no_grad PASSED         [ 82%]
+tests/test_target_encoder.py::test_target_encoder_ema_update PASSED      [ 85%]
+tests/test_target_encoder.py::test_target_encoder_diverges_after_online_update PASSED [ 88%]
+tests/test_target_encoder.py::test_target_encoder_outputs_stop_gradded PASSED [ 91%]
+tests/test_train_step.py::test_online_encoder_params_change_after_step PASSED [ 94%]
+tests/test_train_step.py::test_target_encoder_only_changes_via_ema PASSED [ 97%]
+tests/test_train_step.py::test_ema_update_changes_target_after_step PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_builders.py: 3 warnings
+tests/test_encoder.py: 5 warnings
+tests/test_target_encoder.py: 4 warnings
+tests/test_train_step.py: 3 warnings
+  /Users/sonia/TEXT-JEPA/src/models/encoder.py:15: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+    self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
+
+tests/test_builders.py: 2 warnings
+tests/test_predictor.py: 5 warnings
+tests/test_train_step.py: 3 warnings
+  /Users/sonia/TEXT-JEPA/src/models/predictor.py:30: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+    self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 35 passed, 25 warnings in 0.51s ========================
