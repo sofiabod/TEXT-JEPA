@@ -1,4 +1,4 @@
-# Text-JEPA
+<h1 align="center">Text-JEPA</h1>
 
 PyTorch codebase for **Text-JEPA** (Text-based Joint-Embedding Predictive Architecture), a method for self-supervised learning of latent idea-space representations from text.
 
