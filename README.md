@@ -79,30 +79,6 @@ All comparisons use paired Wilcoxon signed-rank test. Bonferroni correction appl
 
 Primary metric: prediction accuracy vs copy-forward baseline (Eval 1).
 
-## Code Structure
-
-```
-.
-├── configs/                        # experiment config files (.yaml)
-├── src/
-│   ├── encoder.py                  #   text encoder (transformer + projection head)
-│   ├── target_encoder.py           #   EMA copy + stop-gradient
-│   ├── predictor.py                #   temporal transformer predictor
-│   ├── loss.py                     #   SmoothL1 + SigReg
-│   ├── datasets/                   #   PG-19, ROCStories, HellaSwag data loaders
-│   ├── train.py                    #   training loop
-│   ├── eval.py                     #   all evaluations
-│   └── utils/                      #   shared utilities
-├── experiments/
-│   ├── train_text_jepa.py          #   Modal entrypoint for GPU training
-│   └── eval_all.py                 #   run all evals
-├── tests/
-├── results/
-├── ijepa/                          #   reference: facebookresearch/ijepa
-├── jepa/                           #   reference: facebookresearch/jepa (V-JEPA)
-└── lm-evaluation-harness/          #   reference: EleutherAI/lm-evaluation-harness
-```
-
 ## Getting Started
 
 ```bash
