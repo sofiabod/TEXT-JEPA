@@ -1,1 +1,5 @@
 eb_jepa/
+__pycache__/
+*.pyc
+*.pt
+*.tar.gz

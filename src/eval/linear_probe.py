@@ -81,7 +81,7 @@ def _load_gsm8k(tokenizer, max_len: int, batch_size: int = 64):
     """load gsm8k. bin numeric answers into 4 quartile classes using training distribution. returns same format as _load_arc."""
     from datasets import load_dataset as hf_load
     ds_train = hf_load("openai/gsm8k", "main", split="train")
-    ds_test  = hf_load("openai/gsm8k", "main", split="test")
+    ds_test  = hf_load("openai/gsm8k", "main", split="validation")
 
     def _extract(ds):
         texts, answers = [], []
