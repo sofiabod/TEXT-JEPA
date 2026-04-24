@@ -50,6 +50,13 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0)
             tokens_ctx = batch["context_tokens"].to(device)  # (B, k, L)
             tokens_tgt = batch["target_tokens"].to(device)   # (B, L)
 
+            # token dropout on context only, training only; targets stay clean
+            dropout_rate = config["training"]["token_dropout_rate"]
+            mask = torch.bernoulli(
+                torch.full(tokens_ctx.shape, dropout_rate, device=device)
+            ).bool()
+            tokens_ctx = tokens_ctx.masked_fill(mask, 0)
+
             # context encoder (gradients flow)
             z_ctx = torch.stack(
                 [enc(tokens_ctx[:, i]) for i in range(k)], dim=1

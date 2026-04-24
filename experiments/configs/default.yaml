@@ -1,5 +1,5 @@
 model:
-  encoder_backbone: meta-llama/Llama-3.2-1B
+  encoder_backbone: facebook/opt-125m
   latent_dim: 256
   predictor_layers: 2
   predictor_heads: 4
@@ -7,6 +7,7 @@ model:
   ema_momentum_start: 0.996
   ema_momentum_end: 1.0
   temporal_stride: 1   # level-1 stride; change only via config, never hardcode
+  max_seq_len: 128
 
 data:
   context_window_k: 4
@@ -25,6 +26,7 @@ training:
   train_frac: 0.70
   val_frac: 0.10
   test_frac: 0.20
+  token_dropout_rate: 0.15
 
 loss:
   lambda_reg: 1.0
