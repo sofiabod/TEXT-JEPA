@@ -86,6 +86,7 @@ def test_train_one_epoch_reduces_loss(tiny_encoder_cfg):
         "training": {
             "lr": 1e-3, "weight_decay": 0.01, "batch_size": 2,
             "max_epochs": 3, "early_stopping_patience": 10,
+            "token_dropout_rate": 0.0,
         },
         "loss": {"lambda_reg": 0.0, "bcs_num_slices": 64, "bcs_lmbd": 0.1},
     }

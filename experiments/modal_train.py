@@ -13,6 +13,7 @@ text_jepa_image = (
         "scipy",
         "pandas",
     )
+    .add_local_python_source("src")
 )
 
 volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
@@ -23,34 +24,63 @@ app    = modal.App(name=IMAGE_NAME, image=text_jepa_image)
     gpu="A10G",
     volumes={"/checkpoints": volume},
     timeout=3600 * 4,
+    secrets=[modal.Secret.from_name("huggingface-secret")],
 )
 def train_seed(seed: int, config: dict, dataset_name: str = "rocstories"):
+    import re
     import torch
-    import yaml
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, Dataset
+    from transformers import AutoTokenizer
+    from datasets import load_dataset as hf_load
 
-    from src.data.rocstories import ROCStoriesDataset
+    import warnings
+    warnings.filterwarnings("ignore", message="enable_nested_tensor")
     from src.data.pg19 import PG19SegmentDataset
     from src.data.collator import ContextWindowCollator
     from src.train import train
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    k = config["data"]["context_window_k"]
+    k       = config["data"]["context_window_k"]
+    max_len = config["model"].get("max_seq_len", 128)
+    backbone = config["model"].get("encoder_backbone", "facebook/opt-125m")
+
+    tokenizer = AutoTokenizer.from_pretrained(backbone)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    def _tok(text):
+        return tokenizer(
+            text,
+            max_length=max_len,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids.squeeze(0)
+
+    def _split(text):
+        return re.split(r'(?<=[.!?])\s+', text.strip())
 
     if dataset_name == "rocstories":
-        raw_ds = ROCStoriesDataset(
-            csv_path="/checkpoints/rocstories.csv", split="train"
-        )
+        hf_ds    = hf_load("mintujupally/ROCStories", split="train")
         collator = ContextWindowCollator(k=k)
-        windows = []
-        for item in raw_ds:
-            windows.extend(collator(item["segments"]))
-        dataset = _WindowDataset(windows, config)
+        windows  = []
+        for row in hf_ds:
+            segs = _split(row["text"])
+            windows.extend(collator(segs))
     else:
-        dataset = PG19SegmentDataset(split="train")
+        raise NotImplementedError("pg19 tokenization not wired here yet")
+
+    class _WindowDataset(Dataset):
+        def __len__(self): return len(windows)
+        def __getitem__(self, idx):
+            w = windows[idx]
+            return {
+                "context_tokens": torch.stack([_tok(s) for s in w["context"]]),
+                "target_tokens":  _tok(w["target"]),
+            }
 
     loader = DataLoader(
-        dataset,
+        _WindowDataset(),
         batch_size=config["training"]["batch_size"],
         shuffle=False,
         drop_last=True,
@@ -68,30 +98,6 @@ def train_seed(seed: int, config: dict, dataset_name: str = "rocstories"):
         f"/checkpoints/checkpoint_seed{seed}.pt",
     )
     print(f"seed {seed} complete, saved to /checkpoints/checkpoint_seed{seed}.pt")
-
-
-class _WindowDataset:
-    """tokenized rocstories windows for modal training."""
-    def __init__(self, windows, config):
-        import torch
-        self._windows = windows
-        self._max_len = config["model"].get("max_seq_len", 512)
-
-    def __len__(self):
-        return len(self._windows)
-
-    def __getitem__(self, idx):
-        import torch
-        w = self._windows[idx]
-
-        def tok(text):
-            ids = [ord(c) % 30000 for c in text[: self._max_len]]
-            ids += [0] * (self._max_len - len(ids))
-            return torch.tensor(ids, dtype=torch.long)
-
-        ctx = torch.stack([tok(s) for s in w["context"]])
-        tgt = tok(w["target"])
-        return {"context_tokens": ctx, "target_tokens": tgt}
 
 
 @app.local_entrypoint()

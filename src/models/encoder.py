@@ -64,4 +64,4 @@ class TextEncoder(nn.Module):
         else:
             out = self.backbone(input_ids=token_ids)
             h = out.last_hidden_state.mean(dim=1)
-        return self.proj(h)
+        return self.proj(h.to(self.proj.weight.dtype))

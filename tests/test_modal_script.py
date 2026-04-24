@@ -18,7 +18,7 @@ def test_modal_train_script_imports_src_modules():
     with open("experiments/modal_train.py") as f:
         source = f.read()
     assert "from src.train import train" in source
-    assert "from src.data.rocstories import ROCStoriesDataset" in source
+    assert "mintujupally/ROCStories" in source
     assert "from src.data.pg19 import PG19SegmentDataset" in source
 
 
