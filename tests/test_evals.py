@@ -94,3 +94,66 @@ def test_run_all_evals_skips_eval4_when_no_tokenizer(tiny_model, fake_loader):
     enc, pred = tiny_model
     results = run_all_evals(enc, pred, {"loader": fake_loader}, device="cpu", k=4)
     assert "eval4" not in results
+
+
+def test_eval2_hellaswag_ranking_synthetic():
+    """eval 2 ranking logic returns correct keys and valid accuracy values on synthetic data."""
+    import torch
+    import torch.nn.functional as F
+    from src.eval.evals import _rank_endings
+
+    torch.manual_seed(42)
+    B, d = 16, 256
+
+    # synthetic: correct ending (index 0) is much closer to z_pred than distractors
+    z_pred = F.normalize(torch.randn(B, d), dim=-1)
+
+    # correct ending = z_pred + tiny noise -> always rank 1
+    z_correct = F.normalize(z_pred + 0.01 * torch.randn(B, d), dim=-1)
+    # distractors are random and far away
+    z_dist1   = F.normalize(torch.randn(B, d), dim=-1)
+    z_dist2   = F.normalize(torch.randn(B, d), dim=-1)
+    z_dist3   = F.normalize(torch.randn(B, d), dim=-1)
+
+    z_endings_list = [z_correct, z_dist1, z_dist2, z_dist3]
+
+    # baseline: random direction, so no special affinity for correct ending
+    z_baseline = F.normalize(torch.randn(B, d), dim=-1)
+
+    model_acc, baseline_acc = _rank_endings(z_pred, z_endings_list, z_baseline)
+
+    # model should get perfect (or near-perfect) accuracy since correct ending mirrors z_pred
+    assert model_acc == 1.0, f"expected model_acc=1.0, got {model_acc}"
+
+    # return values are floats in [0, 1]
+    assert 0.0 <= model_acc    <= 1.0
+    assert 0.0 <= baseline_acc <= 1.0
+
+
+def test_eval2_rank_endings_returns_baseline_near_chance():
+    """baseline rank1 accuracy should be near 0.25 (chance) for random data."""
+    import torch
+    import torch.nn.functional as F
+    from src.eval.evals import _rank_endings
+
+    torch.manual_seed(0)
+    B, d = 256, 128
+
+    z_pred     = F.normalize(torch.randn(B, d), dim=-1)
+    z_baseline = F.normalize(torch.randn(B, d), dim=-1)
+    # all 4 endings are random -> baseline rank1 acc should be ~0.25
+    z_endings_list = [F.normalize(torch.randn(B, d), dim=-1) for _ in range(4)]
+
+    _, baseline_acc = _rank_endings(z_pred, z_endings_list, z_baseline)
+
+    # with B=256 random vectors, expect roughly chance-level [0.15, 0.35]
+    assert 0.10 <= baseline_acc <= 0.40, \
+        f"expected baseline near 0.25 (chance), got {baseline_acc:.3f}"
+
+
+def test_run_all_evals_skips_eval2_when_no_tokenizer(tiny_model, fake_loader):
+    """run_all_evals does not call eval2 (hellaswag) when tokenizer=None."""
+    from src.eval.evals import run_all_evals
+    enc, pred = tiny_model
+    results = run_all_evals(enc, pred, {"loader": fake_loader}, device="cpu", k=4)
+    assert "eval2" not in results

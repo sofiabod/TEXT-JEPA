@@ -142,6 +142,129 @@ def eval4_linear_probe(encoder, tokenizer, max_len: int, device: str) -> dict:
     return run_eval4(encoder, tokenizer, max_len, device)
 
 
+def _rank_endings(
+    z_pred: torch.Tensor,
+    z_endings_list: list,
+    z_baseline: torch.Tensor,
+) -> tuple[float, float]:
+    """rank 4 candidate endings by cosine sim to z_pred and z_baseline.
+
+    args:
+        z_pred: (B, d) predicted embedding (already normalized)
+        z_endings_list: list of 4 tensors each (B, d), normalized
+        z_baseline: (B, d) copy-forward baseline embedding (already normalized)
+
+    returns:
+        (model_rank1_acc, baseline_rank1_acc) — fraction of examples where correct
+        ending (index 0 in z_endings_list) ranks first.
+
+    note: caller must ensure correct ending is always at index 0.
+    this helper is extracted so tests can exercise ranking without hf downloads.
+    """
+    import torch.nn.functional as F
+    B = z_pred.shape[0]
+    n_correct_model    = 0
+    n_correct_baseline = 0
+
+    # stack endings: (B, 4, d)
+    z_stack = torch.stack(z_endings_list, dim=1)  # (B, 4, d)
+
+    # cosine sim: (B, 4)
+    sim_model    = torch.bmm(z_stack, z_pred.unsqueeze(2)).squeeze(2)     # (B, 4)
+    sim_baseline = torch.bmm(z_stack, z_baseline.unsqueeze(2)).squeeze(2) # (B, 4)
+
+    # rank 1 = argmax; correct ending is at index 0
+    model_top1    = sim_model.argmax(dim=1)    # (B,)
+    baseline_top1 = sim_baseline.argmax(dim=1) # (B,)
+
+    n_correct_model    = int((model_top1 == 0).sum().item())
+    n_correct_baseline = int((baseline_top1 == 0).sum().item())
+
+    return n_correct_model / B, n_correct_baseline / B
+
+
+@torch.no_grad()
+def eval2_hellaswag_ranking(
+    encoder, predictor, tokenizer, max_len: int, device: str, k: int
+) -> dict:
+    """eval 2: does predictor rank correct hellaswag ending above 3 distractors?"""
+    import torch.nn.functional as F
+    from datasets import load_dataset as hf_load
+
+    ds = hf_load("allenai/hellaswag", split="validation")
+
+    def _tok(text):
+        return tokenizer(
+            text,
+            max_length=max_len,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids.squeeze(0)
+
+    batch_size  = 32
+    total       = 0
+    correct_model    = 0
+    correct_baseline = 0
+
+    examples = list(ds)
+    for start in range(0, len(examples), batch_size):
+        batch = examples[start : start + batch_size]
+        B = len(batch)
+
+        # build context tokens: (B, max_len)
+        ctx_texts    = [ex["ctx_a"] + " " + ex["ctx_b"] for ex in batch]
+        ctx_tokens   = torch.stack([_tok(t) for t in ctx_texts]).to(device)  # (B, max_len)
+
+        # encode context once, then repeat k times for predictor input
+        z_ctx_single = encoder(ctx_tokens)                        # (B, d)
+        z_ctx        = z_ctx_single.unsqueeze(1).repeat(1, k, 1) # (B, k, d)
+
+        z_pred     = predictor(z_ctx)   # (B, d)
+        z_baseline = z_ctx[:, -1, :]   # (B, d) — copy-forward
+
+        # normalize
+        z_pred_n     = F.normalize(z_pred, dim=-1)
+        z_baseline_n = F.normalize(z_baseline, dim=-1)
+
+        # encode each of the 4 endings
+        labels = [int(ex["label"]) for ex in batch]
+
+        # build ending tensors with correct ending always at position 0
+        z_endings_list = []  # 4 tensors of shape (B, d)
+        for slot in range(4):
+            # for each example, pick the ending that goes into this slot:
+            # slot 0 = correct ending, slots 1-3 = distractors (in original order, skipping correct)
+            ending_tokens_list = []
+            for i, ex in enumerate(batch):
+                correct_idx = labels[i]
+                endings = ex["endings"]
+                if slot == 0:
+                    idx = correct_idx
+                else:
+                    # distractors: iterate over endings, skip the correct one
+                    distractors = [j for j in range(4) if j != correct_idx]
+                    idx = distractors[slot - 1]
+                ending_tokens_list.append(_tok(endings[idx]))
+            toks = torch.stack(ending_tokens_list).to(device)  # (B, max_len)
+            z_e  = F.normalize(encoder(toks), dim=-1)          # (B, d)
+            z_endings_list.append(z_e)
+
+        model_acc, baseline_acc = _rank_endings(z_pred_n, z_endings_list, z_baseline_n)
+        correct_model    += int(round(model_acc * B))
+        correct_baseline += int(round(baseline_acc * B))
+        total            += B
+
+    model_rank1_acc    = correct_model    / total
+    baseline_rank1_acc = correct_baseline / total
+    return {
+        "eval":                2,
+        "model_rank1_acc":    model_rank1_acc,
+        "baseline_rank1_acc": baseline_rank1_acc,
+        "model_beats_baseline": model_rank1_acc > baseline_rank1_acc,
+    }
+
+
 def run_all_evals(encoder, predictor, test_data, device, k,
                   tokenizer=None, max_len: int = 512):
     results     = {}
@@ -155,4 +278,7 @@ def run_all_evals(encoder, predictor, test_data, device, k,
     results["eval6"] = eval6_calibration(encoder, predictor, test_loader, device, k)
     if tokenizer is not None:
         results["eval4"] = eval4_linear_probe(encoder, tokenizer, max_len, device)
+        results["eval2"] = eval2_hellaswag_ranking(
+            encoder, predictor, tokenizer, max_len, device, k
+        )
     return results

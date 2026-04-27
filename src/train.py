@@ -11,7 +11,7 @@ def make_momentum_schedule(m_start: float, m_end: float, total_steps: int):
         yield m_end - (m_end - m_start) * (math.cos(math.pi * i / total_steps) + 1) / 2
 
 
-def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0):
+def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0, val_loader: DataLoader | None = None):
     torch.manual_seed(seed)
 
     model_cfg = {**config["model"], "temporal_stride": config["model"]["temporal_stride"]}
@@ -83,8 +83,26 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0)
 
         avg = epoch_loss / max(len(loader), 1)
 
-        if avg < best_loss:
-            best_loss        = avg
+        if val_loader is not None:
+            enc.eval()
+            pred.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for val_batch in val_loader:
+                    tokens_ctx = val_batch["context_tokens"].to(device)
+                    tokens_tgt = val_batch["target_tokens"].to(device)
+                    z_ctx = torch.stack(
+                        [enc(tokens_ctx[:, i]) for i in range(k)], dim=1
+                    )
+                    z_tgt = tgt(tokens_tgt)
+                    z_pred = pred(z_ctx)
+                    val_loss += loss_fn(z_pred, z_tgt)["total"].item()
+            monitor = val_loss / max(len(val_loader), 1)
+        else:
+            monitor = avg
+
+        if monitor < best_loss:
+            best_loss        = monitor
             patience_counter = 0
         else:
             patience_counter += 1

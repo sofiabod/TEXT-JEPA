@@ -79,14 +79,28 @@ def train_seed(seed: int, config: dict, dataset_name: str = "rocstories"):
                 "target_tokens":  _tok(w["target"]),
             }
 
+    full_ds   = _WindowDataset()
+    n_total   = len(full_ds)
+    n_train   = int(n_total * 0.70)
+    n_val     = int(n_total * 0.10)
+
+    train_ds = torch.utils.data.Subset(full_ds, range(0, n_train))
+    val_ds   = torch.utils.data.Subset(full_ds, range(n_train, n_train + n_val))
+
     loader = DataLoader(
-        _WindowDataset(),
+        train_ds,
         batch_size=config["training"]["batch_size"],
         shuffle=False,
         drop_last=True,
     )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=config["training"]["batch_size"],
+        shuffle=False,
+        drop_last=False,
+    )
 
-    enc, pred = train(config=config, loader=loader, device=device, seed=seed)
+    enc, pred = train(config=config, loader=loader, device=device, seed=seed, val_loader=val_loader)
 
     torch.save(
         {

@@ -99,6 +99,12 @@ def _print_summary(results):
     print()
     print("eval results")
     print("-" * 48)
+    if "eval2" in results:
+        e = results["eval2"]
+        print(f"eval2  hellaswag ranking")
+        print(f"       model rank1 acc:    {e['model_rank1_acc']:.4f}")
+        print(f"       baseline rank1 acc: {e['baseline_rank1_acc']:.4f}")
+        print(f"       beats baseline:     {e['model_beats_baseline']}")
     if "eval1" in results:
         e = results["eval1"]
         print(f"eval1  prediction accuracy")

@@ -99,6 +99,54 @@ def test_train_one_epoch_reduces_loss(tiny_encoder_cfg):
     assert math.isfinite(final_loss), f"loss is not finite after training: {final_loss}"
 
 
+def test_train_with_val_loader_returns_enc_pred(tiny_encoder_cfg):
+    """train() with a val_loader returns (enc, pred) without error."""
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+    from src.train import train
+
+    vocab_size = tiny_encoder_cfg["vocab_size"]
+    max_len    = tiny_encoder_cfg["max_seq_len"]
+    k          = 4
+    B          = 4
+
+    # synthetic batches: context_tokens (B, k, L) and target_tokens (B, L)
+    ctx = torch.randint(0, vocab_size, (B, k, max_len))
+    tgt = torch.randint(0, vocab_size, (B, max_len))
+
+    class _SyntheticDS(torch.utils.data.Dataset):
+        def __len__(self): return B
+        def __getitem__(self, idx):
+            return {"context_tokens": ctx[idx], "target_tokens": tgt[idx]}
+
+    ds         = _SyntheticDS()
+    tr_loader  = DataLoader(ds, batch_size=2, shuffle=False, drop_last=False)
+    val_loader = DataLoader(ds, batch_size=2, shuffle=False, drop_last=False)
+
+    cfg = {
+        "model": {
+            **tiny_encoder_cfg,
+            "ema_momentum_start": 0.9,
+            "ema_momentum_end":   1.0,
+            "temporal_stride": 1,
+        },
+        "data":     {"context_window_k": k},
+        "training": {
+            "lr": 1e-3, "weight_decay": 0.01, "batch_size": 2,
+            "max_epochs": 2, "early_stopping_patience": 10,
+            "token_dropout_rate": 0.0,
+        },
+        "loss": {"lambda_reg": 0.0, "bcs_num_slices": 64, "bcs_lmbd": 0.1},
+    }
+
+    result = train(cfg, tr_loader, device="cpu", seed=0, val_loader=val_loader)
+    assert isinstance(result, tuple) and len(result) == 2, \
+        "train() must return (enc, pred)"
+    enc, pred = result
+    assert enc  is not None, "enc is None"
+    assert pred is not None, "pred is None"
+
+
 def _measure_loss(cfg, loader, tiny_encoder_cfg):
     """helper: one forward pass, return mean loss."""
     from src.builders import build_encoder, build_target_encoder, build_predictor, build_loss
