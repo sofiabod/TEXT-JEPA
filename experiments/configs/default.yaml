@@ -16,12 +16,13 @@ data:
 
 training:
   optimizer: adamw
-  lr: 3.0e-4
+  lr: 3.0e-4          # projection head + predictor
+  backbone_lr: 1.0e-5 # opt backbone: fine-tuning rate, not pre-training rate
   weight_decay: 0.01
   lr_schedule: cosine
   lr_final: 1.0e-5
   batch_size: 16
-  max_epochs: 200
+  max_epochs: 100
   early_stopping_patience: 30
   train_frac: 0.70
   val_frac: 0.10
@@ -31,6 +32,6 @@ training:
 loss:
   lambda_reg: 1.0
   bcs_num_slices: 1024
-  bcs_lmbd: 0.1
+  bcs_lmbd: 1.0  # was 0.1; increased to actually enforce isotropy
 
 seeds: [0, 1, 2, 3, 4]

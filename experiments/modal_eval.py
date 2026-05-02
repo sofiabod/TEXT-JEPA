@@ -25,7 +25,7 @@ app    = modal.App(name=IMAGE_NAME, image=text_jepa_image)
 @app.function(
     gpu="A10G",
     volumes={"/checkpoints": volume},
-    timeout=3600,
+    timeout=7200,
 )
 def eval_seed(seed: int):
     import re

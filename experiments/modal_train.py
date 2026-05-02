@@ -23,11 +23,12 @@ app    = modal.App(name=IMAGE_NAME, image=text_jepa_image)
 @app.function(
     gpu="A10G",
     volumes={"/checkpoints": volume},
-    timeout=3600 * 4,
+    timeout=3600 * 12,
     secrets=[modal.Secret.from_name("huggingface-secret")],
 )
 def train_seed(seed: int, config: dict, dataset_name: str = "rocstories"):
     import re
+    import traceback
     import torch
     from torch.utils.data import DataLoader, Dataset
     from transformers import AutoTokenizer
@@ -100,7 +101,11 @@ def train_seed(seed: int, config: dict, dataset_name: str = "rocstories"):
         drop_last=False,
     )
 
-    enc, pred = train(config=config, loader=loader, device=device, seed=seed, val_loader=val_loader)
+    try:
+        enc, pred = train(config=config, loader=loader, device=device, seed=seed, val_loader=val_loader)
+    except Exception:
+        traceback.print_exc()
+        raise
 
     torch.save(
         {

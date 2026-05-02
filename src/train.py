@@ -22,11 +22,21 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0,
     pred    = build_predictor({**model_cfg, "context_window_k": k}).to(device)
     loss_fn = build_loss(config["loss"]).to(device)
 
+    backbone_lr = config["training"].get("backbone_lr", config["training"]["lr"])
     opt = torch.optim.AdamW(
-        list(enc.parameters()) + list(pred.parameters()),
+        [
+            {"params": enc.backbone.parameters(), "lr": backbone_lr},
+            {"params": enc.proj.parameters()},
+            {"params": pred.parameters()},
+        ],
         lr=config["training"]["lr"],
         weight_decay=config["training"]["weight_decay"],
     )
+
+    # bf16 on cuda: same tensor-core speedup as fp16, no GradScaler needed,
+    # numerically stable with fp32-range exponents — preferred on ampere (A10G)
+    use_amp   = (device == "cuda")
+    amp_dtype = torch.bfloat16
 
     epochs   = config["training"]["max_epochs"]
     patience = config["training"]["early_stopping_patience"]
@@ -38,7 +48,7 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0,
         total_steps,
     )
 
-    best_loss       = float("inf")
+    best_loss        = float("inf")
     patience_counter = 0
 
     for epoch in range(epochs):
@@ -50,25 +60,22 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0,
             tokens_ctx = batch["context_tokens"].to(device)  # (B, k, L)
             tokens_tgt = batch["target_tokens"].to(device)   # (B, L)
 
-            # token dropout on context only, training only; targets stay clean
+            # token dropout on context only; targets stay clean
             dropout_rate = config["training"]["token_dropout_rate"]
             mask = torch.bernoulli(
                 torch.full(tokens_ctx.shape, dropout_rate, device=device)
             ).bool()
             tokens_ctx = tokens_ctx.masked_fill(mask, 0)
 
-            # context encoder (gradients flow)
-            z_ctx = torch.stack(
-                [enc(tokens_ctx[:, i]) for i in range(k)], dim=1
-            )
-
-            # target encoder, no grad
-            with torch.no_grad():
-                z_tgt = tgt(tokens_tgt)
-
-            z_pred = pred(z_ctx)
-            out    = loss_fn(z_pred, z_tgt)
-            loss   = out["total"]
+            with torch.autocast(device_type="cuda" if use_amp else "cpu", dtype=amp_dtype, enabled=use_amp):
+                z_ctx = torch.stack(
+                    [enc(tokens_ctx[:, i]) for i in range(k)], dim=1
+                )
+                with torch.no_grad():
+                    z_tgt = tgt(tokens_tgt)
+                z_pred = pred(z_ctx)
+                out    = loss_fn(z_pred, z_tgt)
+                loss   = out["total"]
 
             opt.zero_grad()
             loss.backward()
@@ -91,15 +98,18 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0,
                 for val_batch in val_loader:
                     tokens_ctx = val_batch["context_tokens"].to(device)
                     tokens_tgt = val_batch["target_tokens"].to(device)
-                    z_ctx = torch.stack(
-                        [enc(tokens_ctx[:, i]) for i in range(k)], dim=1
-                    )
-                    z_tgt = tgt(tokens_tgt)
-                    z_pred = pred(z_ctx)
-                    val_loss += loss_fn(z_pred, z_tgt)["total"].item()
+                    with torch.autocast(device_type="cuda" if use_amp else "cpu", dtype=amp_dtype, enabled=use_amp):
+                        z_ctx = torch.stack(
+                            [enc(tokens_ctx[:, i]) for i in range(k)], dim=1
+                        )
+                        z_tgt = tgt(tokens_tgt)
+                        z_pred = pred(z_ctx)
+                        val_loss += loss_fn(z_pred, z_tgt)["total"].item()
             monitor = val_loss / max(len(val_loader), 1)
         else:
             monitor = avg
+
+        print(f"epoch {epoch:3d}  train={avg:.4f}  val={monitor:.4f}  patience={patience_counter}/{patience}", flush=True)
 
         if monitor < best_loss:
             best_loss        = monitor
@@ -107,6 +117,7 @@ def train(config: dict, loader: DataLoader, device: str = "cuda", seed: int = 0,
         else:
             patience_counter += 1
             if patience_counter >= patience:
+                print(f"early stop at epoch {epoch}", flush=True)
                 break
 
     return enc, pred
