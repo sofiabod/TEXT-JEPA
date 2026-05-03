@@ -32,6 +32,6 @@ training:
 loss:
   lambda_reg: 1.0
   bcs_num_slices: 1024
-  bcs_lmbd: 1.0  # was 0.1; increased to actually enforce isotropy
+  bcs_lmbd: 0.1
 
 seeds: [0, 1, 2, 3, 4]
